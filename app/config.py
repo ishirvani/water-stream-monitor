@@ -1,3 +1,4 @@
+from pathlib import Path
 HOST = "127.0.0.1"
 PORT = 9034
 
@@ -24,3 +25,7 @@ VALID_MODELS = {
     "pressure_drop_predictor",
     "demand_forecaster",
 }
+OUTPUT_DIR = Path("output")
+
+CLEAN_FILE = OUTPUT_DIR / "clean_readings.csv"
+BAD_FILE = OUTPUT_DIR / "bad_readings.csv"
