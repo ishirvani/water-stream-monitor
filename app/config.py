@@ -29,3 +29,4 @@ OUTPUT_DIR = Path("output")
 
 CLEAN_FILE = OUTPUT_DIR / "clean_readings.csv"
 BAD_FILE = OUTPUT_DIR / "bad_readings.csv"
+REPORT_FILE = OUTPUT_DIR / "real_time_reports.csv"

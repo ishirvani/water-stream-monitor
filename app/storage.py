@@ -8,6 +8,7 @@ from app.config import (
     OUTPUT_DIR,
     CLEAN_FILE,
     BAD_FILE,
+    REPORT_FILE,
 )
 
 
@@ -29,6 +30,25 @@ BAD_COLUMNS = [
 ]
 
 
+REPORT_COLUMNS = [
+    "report_timestamp",
+    "total_records",
+    "clean_records",
+    "bad_records",
+    "low_confidence_count",
+    "active_stations",
+
+    "leak_detector_avg_confidence",
+    "leak_detector_avg_response_time_ms",
+
+    "pressure_drop_predictor_avg_confidence",
+    "pressure_drop_predictor_avg_response_time_ms",
+
+    "demand_forecaster_avg_confidence",
+    "demand_forecaster_avg_response_time_ms",
+]
+
+
 class CsvStorage:
 
     def __init__(self) -> None:
@@ -46,6 +66,11 @@ class CsvStorage:
         self._ensure_file(
             BAD_FILE,
             BAD_COLUMNS,
+        )
+
+        self._ensure_file(
+            REPORT_FILE,
+            REPORT_COLUMNS,
         )
 
     @staticmethod
@@ -140,4 +165,15 @@ class CsvStorage:
             BAD_FILE,
             BAD_COLUMNS,
             row,
+        )
+
+    def save_report(
+        self,
+        report: dict,
+    ) -> None:
+
+        self._append_row(
+            REPORT_FILE,
+            REPORT_COLUMNS,
+            report,
         )
