@@ -13,6 +13,7 @@ from app.config import (
 from app.storage import CsvStorage
 from app.validator import validate_record
 from app.statistics import StreamStatistics
+from app.drift import DriftDetector
 
 
 class WaterStreamClient:
@@ -21,13 +22,14 @@ class WaterStreamClient:
 
         self.storage = CsvStorage()
         self.statistics = StreamStatistics()
+        self.drift_detector = DriftDetector()
 
-        # شمارنده کلی از ابتدای اجرای برنامه
+        # Global counters from application start
         self.total_records = 0
         self.clean_records = 0
         self.bad_records = 0
 
-        # زمان آخرین گزارش 20 ثانیه‌ای
+        # Last 20-second report time
         self.last_report_time = time.monotonic()
 
     def process_line(
@@ -38,10 +40,12 @@ class WaterStreamClient:
         if not raw_line:
             return
 
-        # -----------------------------
-        # Decode bytes to UTF-8
-        # -----------------------------
+        # --------------------------------------------------
+        # Decode bytes -> UTF-8 string
+        # --------------------------------------------------
+
         try:
+
             line = raw_line.decode(
                 "utf-8"
             ).strip()
@@ -65,10 +69,12 @@ class WaterStreamClient:
         if not line:
             return
 
-        # -----------------------------
+        # --------------------------------------------------
         # Parse JSON
-        # -----------------------------
+        # --------------------------------------------------
+
         try:
+
             record = json.loads(line)
 
         except json.JSONDecodeError as exc:
@@ -89,9 +95,10 @@ class WaterStreamClient:
 
         self.total_records += 1
 
-        # -----------------------------
+        # --------------------------------------------------
         # Validate record
-        # -----------------------------
+        # --------------------------------------------------
+
         errors = validate_record(record)
 
         if errors:
@@ -107,14 +114,27 @@ class WaterStreamClient:
 
             return
 
-        # -----------------------------
+        # --------------------------------------------------
         # Clean record
-        # -----------------------------
+        # --------------------------------------------------
+
         self.clean_records += 1
 
-        self.statistics.add_clean(record)
+        self.statistics.add_clean(
+            record
+        )
 
-        self.storage.save_clean(record)
+        self.storage.save_clean(
+            record
+        )
+
+        # --------------------------------------------------
+        # Send clean record to Drift Detector
+        # --------------------------------------------------
+
+        self.drift_detector.add_record(
+            record
+        )
 
     def print_status(self) -> None:
 
@@ -127,6 +147,88 @@ class WaterStreamClient:
             flush=True,
         )
 
+    def check_drift(self) -> None:
+
+        alerts = (
+            self.drift_detector.check()
+        )
+
+        for alert in alerts:
+
+            self.storage.save_drift_alert(
+                alert
+            )
+
+            print()
+            print()
+            print("!" * 60)
+            print("MODEL DRIFT DETECTED")
+            print("!" * 60)
+
+            print(
+                f"Model                  : "
+                f"{alert['model_name']}"
+            )
+
+            print(
+                f"Reason                 : "
+                f"{alert['reason']}"
+            )
+
+            print()
+
+            print(
+                f"Baseline Confidence    : "
+                f"{alert['baseline_avg_confidence']}"
+            )
+
+            print(
+                f"Current Confidence     : "
+                f"{alert['current_avg_confidence']}"
+            )
+
+            print(
+                f"Confidence Change      : "
+                f"{alert['confidence_change_percent']}%"
+            )
+
+            print()
+
+            print(
+                f"Baseline Response Time : "
+                f"{alert['baseline_avg_response_time_ms']} ms"
+            )
+
+            print(
+                f"Current Response Time  : "
+                f"{alert['current_avg_response_time_ms']} ms"
+            )
+
+            print(
+                f"Response Time Change   : "
+                f"{alert['response_time_change_percent']}%"
+            )
+
+            if (
+                alert["model_name"]
+                == "leak_detector"
+            ):
+
+                print()
+
+                print(
+                    f"Baseline Leak Rate     : "
+                    f"{alert['baseline_leak_rate']}"
+                )
+
+                print(
+                    f"Current Leak Rate      : "
+                    f"{alert['current_leak_rate']}"
+                )
+
+            print("!" * 60)
+            print()
+
     def write_periodic_report(self) -> None:
 
         now = time.monotonic()
@@ -135,24 +237,34 @@ class WaterStreamClient:
             now - self.last_report_time
         )
 
-        if elapsed < REPORT_INTERVAL_SECONDS:
+        if (
+            elapsed
+            < REPORT_INTERVAL_SECONDS
+        ):
             return
 
-        # ساخت گزارش برای همین پنجره 20 ثانیه
+        # --------------------------------------------------
+        # Build 20-second report
+        # --------------------------------------------------
+
         report = (
             self.statistics.build_report()
         )
 
-        # ذخیره در CSV
         self.storage.save_report(
             report
         )
 
-        # نمایش در ترمینال
-        print("\n")
-        print("=" * 50)
+        # --------------------------------------------------
+        # Print report
+        # --------------------------------------------------
+
+        print()
+        print()
+
+        print("=" * 60)
         print("20 SECOND REAL-TIME REPORT")
-        print("=" * 50)
+        print("=" * 60)
 
         print(
             f"Total Records      : "
@@ -181,6 +293,10 @@ class WaterStreamClient:
 
         print()
 
+        # --------------------------------------------------
+        # Leak Detector
+        # --------------------------------------------------
+
         print("LEAK DETECTOR")
 
         print(
@@ -194,6 +310,10 @@ class WaterStreamClient:
         )
 
         print()
+
+        # --------------------------------------------------
+        # Pressure Drop Predictor
+        # --------------------------------------------------
 
         print("PRESSURE DROP PREDICTOR")
 
@@ -209,6 +329,10 @@ class WaterStreamClient:
 
         print()
 
+        # --------------------------------------------------
+        # Demand Forecaster
+        # --------------------------------------------------
+
         print("DEMAND FORECASTER")
 
         print(
@@ -221,10 +345,18 @@ class WaterStreamClient:
             f"{report['demand_forecaster_avg_response_time_ms']} ms"
         )
 
-        print("=" * 50)
-        print()
+        print("=" * 60)
 
-        # شروع پنجره 20 ثانیه‌ای بعدی
+        # --------------------------------------------------
+        # Check model drift
+        # --------------------------------------------------
+
+        self.check_drift()
+
+        # --------------------------------------------------
+        # Start new 20-second reporting window
+        # --------------------------------------------------
+
         self.statistics.reset()
 
         self.last_report_time = now
@@ -234,7 +366,8 @@ class WaterStreamClient:
         buffer = b""
 
         print(
-            f"Connecting to {HOST}:{PORT} ..."
+            f"Connecting to "
+            f"{HOST}:{PORT} ..."
         )
 
         with socket.socket(
@@ -250,9 +383,17 @@ class WaterStreamClient:
                 (HOST, PORT)
             )
 
-            print("Connected successfully.")
-            print("Receiving stream...")
-            print("Press Ctrl+C to stop.\n")
+            print(
+                "Connected successfully."
+            )
+
+            print(
+                "Receiving stream..."
+            )
+
+            print(
+                "Press Ctrl+C to stop.\n"
+            )
 
             while True:
 
@@ -264,7 +405,6 @@ class WaterStreamClient:
 
                 except socket.timeout:
 
-                    # حتی در timeout هم زمان گزارش را بررسی کن
                     self.write_periodic_report()
 
                     continue
@@ -272,20 +412,29 @@ class WaterStreamClient:
                 if not chunk:
 
                     print(
-                        "\nServer closed the connection."
+                        "\nServer closed "
+                        "the connection."
                     )
 
                     break
 
+                # --------------------------------------------------
                 # TCP stream buffer
+                # --------------------------------------------------
+
                 buffer += chunk
 
-                # استخراج تمام رکوردهای کامل
+                # --------------------------------------------------
+                # Process complete JSON lines only
+                # --------------------------------------------------
+
                 while b"\n" in buffer:
 
-                    line, buffer = buffer.split(
-                        b"\n",
-                        1,
+                    line, buffer = (
+                        buffer.split(
+                            b"\n",
+                            1,
+                        )
                     )
 
                     self.process_line(
@@ -294,12 +443,16 @@ class WaterStreamClient:
 
                     self.print_status()
 
-                # مهم:
-                # بعد از پردازش chunk بررسی کن
-                # آیا 20 ثانیه گذشته یا نه
+                # --------------------------------------------------
+                # Periodic report + drift check
+                # --------------------------------------------------
+
                 self.write_periodic_report()
 
-        # داده ناقص باقی‌مانده
+        # --------------------------------------------------
+        # Remaining incomplete TCP data
+        # --------------------------------------------------
+
         if buffer.strip():
 
             self.total_records += 1
@@ -310,6 +463,7 @@ class WaterStreamClient:
             self.storage.save_bad(
                 repr(buffer),
                 [
-                    "connection closed with incomplete record"
+                    "connection closed "
+                    "with incomplete record"
                 ],
             )
