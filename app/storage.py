@@ -9,6 +9,7 @@ from app.config import (
     CLEAN_FILE,
     BAD_FILE,
     REPORT_FILE,
+    DRIFT_FILE,
 )
 
 
@@ -49,6 +50,25 @@ REPORT_COLUMNS = [
 ]
 
 
+DRIFT_COLUMNS = [
+    "alert_timestamp",
+    "model_name",
+
+    "baseline_avg_confidence",
+    "current_avg_confidence",
+    "confidence_change_percent",
+
+    "baseline_avg_response_time_ms",
+    "current_avg_response_time_ms",
+    "response_time_change_percent",
+
+    "baseline_leak_rate",
+    "current_leak_rate",
+
+    "reason",
+]
+
+
 class CsvStorage:
 
     def __init__(self) -> None:
@@ -71,6 +91,11 @@ class CsvStorage:
         self._ensure_file(
             REPORT_FILE,
             REPORT_COLUMNS,
+        )
+
+        self._ensure_file(
+            DRIFT_FILE,
+            DRIFT_COLUMNS,
         )
 
     @staticmethod
@@ -141,11 +166,9 @@ class CsvStorage:
     ) -> None:
 
         if isinstance(raw_record, str):
-
             raw_value = raw_record
 
         else:
-
             raw_value = json.dumps(
                 raw_record,
                 ensure_ascii=False,
@@ -176,4 +199,15 @@ class CsvStorage:
             REPORT_FILE,
             REPORT_COLUMNS,
             report,
+        )
+
+    def save_drift_alert(
+        self,
+        alert: dict,
+    ) -> None:
+
+        self._append_row(
+            DRIFT_FILE,
+            DRIFT_COLUMNS,
+            alert,
         )
